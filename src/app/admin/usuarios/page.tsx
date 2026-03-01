@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Image from 'next/image'
-import { Search, X, Users, FileText, ChevronUp, ChevronDown, ChevronsUpDown, Loader2, Shield, User, UserX } from 'lucide-react'
+import { Search, X, Users, FileText, ChevronUp, ChevronDown, ChevronsUpDown, Loader2, Shield, User, UserX, ChevronRight } from 'lucide-react'
 import { supabaseClient } from '@/lib/supabase/client'
 import { useAuth } from '@/context/AuthContext'
 import { cn } from '@/lib/utils'
@@ -13,15 +13,25 @@ type SortKey = 'full_name' | 'created_at' | 'notes_count' | 'role'
 type SortDir = 'asc' | 'desc'
 const ROLE_ORDER: Record<UserRole, number> = { admin: 0, user: 1, blocked: 2 }
 
+const ROLE_STYLES: Record<UserRole, { bg: string; color: string; label: string; desc: string }> = {
+  user:    { bg: '#e8edf5', color: '#1e2a45', label: 'Usuario',   desc: 'Acceso normal a la plataforma' },
+  admin:   { bg: '#fef3c7', color: '#92400e', label: 'Admin',     desc: 'Acceso total incluyendo panel admin' },
+  blocked: { bg: '#fee2e2', color: '#991b1b', label: 'Bloqueado', desc: 'Sin acceso a la plataforma' },
+}
+
 export default function AdminUsuariosPage() {
   const { user: currentUser } = useAuth()
-  const [users, setUsers]     = useState<UserWithNotes[]>([])
-  const [loading, setLoading] = useState(true)
-  const [query, setQuery]     = useState('')
+  const [users, setUsers]         = useState<UserWithNotes[]>([])
+  const [loading, setLoading]     = useState(true)
+  const [query, setQuery]         = useState('')
   const [roleFilter, setRoleFilter] = useState<UserRole | ''>('')
-  const [sortKey, setSortKey] = useState<SortKey>('created_at')
-  const [sortDir, setSortDir] = useState<SortDir>('desc')
-  const [changingRole, setChangingRole] = useState<string | null>(null)
+  const [sortKey, setSortKey]     = useState<SortKey>('created_at')
+  const [sortDir, setSortDir]     = useState<SortDir>('desc')
+  const [saving, setSaving]       = useState(false)
+
+  // Panel lateral
+  const [selectedUser, setSelectedUser]   = useState<UserWithNotes | null>(null)
+  const [pendingRole, setPendingRole]     = useState<UserRole | null>(null)
 
   useEffect(() => {
     const load = async () => {
@@ -37,12 +47,26 @@ export default function AdminUsuariosPage() {
     load()
   }, [])
 
-  const handleRoleChange = async (userId: string, newRole: UserRole) => {
-    if (userId === currentUser?.id) return
-    setChangingRole(userId)
-    const { error } = await supabaseClient.from('profiles').update({ role: newRole }).eq('id', userId)
-    if (!error) setUsers(prev => prev.map(u => u.id === userId ? { ...u, role: newRole } : u))
-    setChangingRole(null)
+  const openPanel = (u: UserWithNotes) => {
+    if (u.id === currentUser?.id) return
+    setSelectedUser(u)
+    setPendingRole(u.role)
+  }
+
+  const closePanel = () => {
+    setSelectedUser(null)
+    setPendingRole(null)
+  }
+
+  const handleConfirm = async () => {
+    if (!selectedUser || !pendingRole || pendingRole === selectedUser.role) return
+    setSaving(true)
+    const { error } = await supabaseClient.from('profiles').update({ role: pendingRole }).eq('id', selectedUser.id)
+    if (!error) {
+      setUsers(prev => prev.map(u => u.id === selectedUser.id ? { ...u, role: pendingRole } : u))
+      setSelectedUser(prev => prev ? { ...prev, role: pendingRole } : null)
+    }
+    setSaving(false)
   }
 
   const handleSort = (key: SortKey) => {
@@ -85,7 +109,7 @@ export default function AdminUsuariosPage() {
     <div className="space-y-8 animate-fade-in">
       <div>
         <h1 className="font-display font-black text-2xl sm:text-3xl text-navy-900 mb-1">Gestión de usuarios</h1>
-        <p className="text-sm text-slate-500">Administra roles y accesos de todos los usuarios</p>
+        <p className="text-sm text-slate-500">Haz clic en un usuario para cambiar su rol</p>
       </div>
 
       {/* Summary */}
@@ -106,15 +130,6 @@ export default function AdminUsuariosPage() {
             <div className="font-display font-black text-2xl" style={{ color }}>{value}</div>
           </div>
         ))}
-      </div>
-
-      {/* Info */}
-      <div className="flex items-start gap-3 p-4 rounded-xl border border-blue-100 bg-blue-50 text-sm">
-        <Shield size={15} className="text-blue-600 flex-shrink-0 mt-0.5" />
-        <div>
-          <p className="font-semibold text-blue-900 mb-0.5">Cómo cambiar roles</p>
-          <p className="text-blue-700">Usa el selector en cada fila para cambiar entre <strong>Usuario</strong>, <strong>Admin</strong> y <strong>Bloqueado</strong>. No puedes cambiar tu propio rol.</p>
-        </div>
       </div>
 
       {/* Controls */}
@@ -148,111 +163,193 @@ export default function AdminUsuariosPage() {
         <span className="font-semibold text-navy-900">{filtered.length}</span> usuario{filtered.length !== 1 ? 's' : ''}
       </p>
 
-      {/* Table */}
-      <div className="lex-card overflow-hidden">
-        <div className="hidden sm:grid grid-cols-[1fr_auto_auto_auto] gap-4 px-6 py-3 text-xs font-semibold uppercase tracking-wide text-slate-400 border-b border-slate-100 bg-slate-50">
-          {([['full_name', 'Usuario'], ['notes_count', 'Notas'], ['created_at', 'Registro'], ['role', 'Rol']] as [SortKey, string][]).map(([key, label]) => (
-            <button key={key} onClick={() => handleSort(key)}
-              className="flex items-center gap-1 hover:text-navy-700 transition-colors text-left"
-              style={{ color: sortKey === key ? 'var(--navy-700)' : undefined }}
-            >
-              {label}
-              {sortKey !== key ? <ChevronsUpDown size={11} /> : sortDir === 'asc' ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
-            </button>
-          ))}
+      {/* Tabla + Panel lateral */}
+      <div className="flex gap-4 items-start">
+
+        {/* Tabla */}
+        <div className={cn('lex-card overflow-hidden transition-all duration-300', selectedUser ? 'flex-1 min-w-0' : 'w-full')}>
+          <div className="hidden sm:grid grid-cols-[1fr_auto_auto_auto] gap-4 px-6 py-3 text-xs font-semibold uppercase tracking-wide text-slate-400 border-b border-slate-100 bg-slate-50">
+            {([['full_name', 'Usuario'], ['notes_count', 'Notas'], ['created_at', 'Registro'], ['role', 'Rol']] as [SortKey, string][]).map(([key, label]) => (
+              <button key={key} onClick={() => handleSort(key)}
+                className="flex items-center gap-1 hover:text-navy-700 transition-colors text-left"
+                style={{ color: sortKey === key ? 'var(--navy-700)' : undefined }}
+              >
+                {label}
+                {sortKey !== key ? <ChevronsUpDown size={11} /> : sortDir === 'asc' ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+              </button>
+            ))}
+          </div>
+
+          {filtered.length === 0 ? (
+            <div className="text-center py-16">
+              <Users size={32} className="mx-auto mb-3 text-slate-300" />
+              <p className="font-display font-semibold text-navy-900">Sin resultados</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-100">
+              {filtered.map((u, i) => {
+                const isSelected = selectedUser?.id === u.id
+                const roleStyle  = ROLE_STYLES[u.role]
+                return (
+                  <div key={u.id}
+                    onClick={() => u.id !== currentUser?.id && (isSelected ? closePanel() : openPanel(u))}
+                    className={cn(
+                      'grid grid-cols-1 sm:grid-cols-[1fr_auto_auto_auto] gap-3 sm:gap-4 px-6 py-4 items-center transition-all opacity-0 animate-fade-up',
+                      u.id === currentUser?.id ? 'cursor-default' : 'cursor-pointer hover:bg-slate-50',
+                      isSelected && 'bg-navy-50 border-l-2 border-navy-500'
+                    )}
+                    style={{ animationDelay: `${i * 35}ms`, animationFillMode: 'forwards' }}
+                  >
+                    {/* User info */}
+                    <div className="flex items-center gap-3 min-w-0">
+                      {u.avatar_url ? (
+                        <Image src={u.avatar_url} alt="" width={38} height={38} className="rounded-full flex-shrink-0 ring-2 ring-white" />
+                      ) : (
+                        <div className="w-[38px] h-[38px] rounded-full flex items-center justify-center text-sm font-bold text-white flex-shrink-0 ring-2 ring-white"
+                          style={{ background: 'var(--navy-700)' }}
+                        >
+                          {(u.full_name ?? u.email ?? 'U')[0].toUpperCase()}
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-semibold text-navy-900 truncate">{u.full_name ?? 'Sin nombre'}</p>
+                          {u.id === currentUser?.id && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold"
+                              style={{ background: '#e8edf5', color: '#1e2a45' }}
+                            >tú</span>
+                          )}
+                        </div>
+                        <p className="text-xs text-slate-400 truncate">{u.email}</p>
+                      </div>
+                    </div>
+
+                    {/* Notes */}
+                    <div className="hidden sm:flex items-center gap-1.5 text-sm justify-center text-slate-500">
+                      <FileText size={13} />
+                      <span className="font-semibold text-navy-900">{u.notes_count}</span>
+                    </div>
+
+                    {/* Date */}
+                    <div className="hidden sm:block text-xs text-center text-slate-400">
+                      {new Date(u.created_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    </div>
+
+                    {/* Role badge + arrow */}
+                    <div className="flex items-center justify-end gap-2">
+                      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold"
+                        style={{ background: roleStyle.bg, color: roleStyle.color }}
+                      >
+                        {roleStyle.label}
+                      </span>
+                      {u.id !== currentUser?.id && (
+                        <ChevronRight size={14} className={cn(
+                          'text-slate-300 transition-transform duration-200',
+                          isSelected && 'rotate-180 text-navy-500'
+                        )} />
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </div>
 
-        {filtered.length === 0 ? (
-          <div className="text-center py-16">
-            <Users size={32} className="mx-auto mb-3 text-slate-300" />
-            <p className="font-display font-semibold text-navy-900">Sin resultados</p>
-          </div>
-        ) : (
-          <div className="divide-y divide-slate-100">
-            {filtered.map((u, i) => (
-              <div key={u.id}
-                className="grid grid-cols-1 sm:grid-cols-[1fr_auto_auto_auto] gap-3 sm:gap-4 px-6 py-4 items-center hover:bg-slate-50 transition-colors opacity-0 animate-fade-up"
-                style={{ animationDelay: `${i * 35}ms`, animationFillMode: 'forwards' }}
+        {/* Panel lateral de edición */}
+        {selectedUser && (
+          <div className="w-64 flex-shrink-0 lex-card overflow-hidden animate-slide-down">
+            {/* Header */}
+            <div className="px-5 py-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+              <h3 className="font-display font-bold text-sm text-navy-900">Cambiar rol</h3>
+              <button onClick={closePanel}
+                className="w-6 h-6 rounded flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-200 transition-colors"
               >
-                {/* User info */}
-                <div className="flex items-center gap-3 min-w-0">
-                  {u.avatar_url ? (
-                    <Image src={u.avatar_url} alt="" width={38} height={38} className="rounded-full flex-shrink-0 ring-2 ring-white" />
-                  ) : (
-                    <div className="w-[38px] h-[38px] rounded-full flex items-center justify-center text-sm font-bold text-white flex-shrink-0 ring-2 ring-white"
-                      style={{ background: 'var(--navy-700)' }}
-                    >
-                      {(u.full_name ?? u.email ?? 'U')[0].toUpperCase()}
-                    </div>
-                  )}
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-semibold text-navy-900 truncate">{u.full_name ?? 'Sin nombre'}</p>
-                      {u.id === currentUser?.id && <span className="badge badge-navy text-xs">tú</span>}
-                    </div>
-                    <p className="text-xs text-slate-400 truncate">{u.email}</p>
+                <X size={14} />
+              </button>
+            </div>
+
+            {/* User info */}
+            <div className="px-5 py-4 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                {selectedUser.avatar_url ? (
+                  <Image src={selectedUser.avatar_url} alt="" width={36} height={36} className="rounded-full flex-shrink-0" />
+                ) : (
+                  <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold text-white flex-shrink-0"
+                    style={{ background: 'var(--navy-700)' }}
+                  >
+                    {(selectedUser.full_name ?? selectedUser.email ?? 'U')[0].toUpperCase()}
                   </div>
-                </div>
-
-                {/* Notes count */}
-                <div className="hidden sm:flex items-center gap-1.5 text-sm justify-center text-slate-500">
-                  <FileText size={13} />
-                  <span className="font-semibold text-navy-900">{u.notes_count}</span>
-                </div>
-
-                {/* Date */}
-                <div className="hidden sm:block text-xs text-center text-slate-400">
-                  {new Date(u.created_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}
-                </div>
-
-                {/* Role selector */}
-                <div className="flex items-center justify-start sm:justify-center">
-                  {u.id === currentUser?.id ? (
-                    <span className="badge badge-gold flex items-center gap-1"><Shield size={10} />Admin (tú)</span>
-                  ) : changingRole === u.id ? (
-                    <Loader2 size={16} className="animate-spin text-navy-400" />
-                  ) : (
-                    <RoleDropdown currentRole={u.role} onChange={role => handleRoleChange(u.id, role)} />
-                  )}
+                )}
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-navy-900 truncate">{selectedUser.full_name ?? 'Sin nombre'}</p>
+                  <p className="text-xs text-slate-400 truncate">{selectedUser.email}</p>
                 </div>
               </div>
-            ))}
+            </div>
+
+            {/* Role options */}
+            <div className="px-4 py-3 space-y-2">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Selecciona el rol</p>
+              {(Object.entries(ROLE_STYLES) as [UserRole, typeof ROLE_STYLES[UserRole]][]).map(([role, style]) => (
+                <button key={role} onClick={() => setPendingRole(role)}
+                  className={cn(
+                    'w-full flex items-start gap-3 px-3 py-2.5 rounded-xl border-2 transition-all text-left',
+                    pendingRole === role
+                      ? 'border-navy-400 bg-navy-50'
+                      : 'border-transparent hover:border-slate-200 hover:bg-slate-50'
+                  )}
+                >
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold flex-shrink-0 mt-0.5"
+                    style={{ background: style.bg, color: style.color }}
+                  >
+                    {style.label}
+                  </span>
+                  <span className="text-xs text-slate-500 leading-relaxed">{style.desc}</span>
+                  {pendingRole === role && (
+                    <span className="ml-auto text-navy-500 font-bold text-sm flex-shrink-0">✓</span>
+                  )}
+                </button>
+              ))}
+            </div>
+
+            {/* Confirm */}
+            <div className="px-4 pb-4 pt-2 space-y-2">
+              {/* Visual: from → to */}
+              {pendingRole && pendingRole !== selectedUser.role && (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 mb-3">
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold"
+                    style={{ background: ROLE_STYLES[selectedUser.role].bg, color: ROLE_STYLES[selectedUser.role].color }}
+                  >
+                    {ROLE_STYLES[selectedUser.role].label}
+                  </span>
+                  <span className="text-slate-400 text-xs">→</span>
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold"
+                    style={{ background: ROLE_STYLES[pendingRole].bg, color: ROLE_STYLES[pendingRole].color }}
+                  >
+                    {ROLE_STYLES[pendingRole].label}
+                  </span>
+                </div>
+              )}
+
+              <button
+                onClick={handleConfirm}
+                disabled={!pendingRole || pendingRole === selectedUser.role || saving}
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                style={{ background: 'var(--navy-900)' }}
+              >
+                {saving ? <Loader2 size={14} className="animate-spin" /> : null}
+                {saving ? 'Guardando...' : 'Confirmar cambio'}
+              </button>
+              <button onClick={closePanel}
+                className="w-full py-2 rounded-xl text-xs font-medium text-slate-500 hover:bg-slate-100 transition-colors"
+              >
+                Cancelar
+              </button>
+            </div>
           </div>
         )}
       </div>
-    </div>
-  )
-}
-
-function RoleDropdown({ currentRole, onChange }: { currentRole: UserRole; onChange: (r: UserRole) => void }) {
-  const [open, setOpen] = useState(false)
-  const options: Array<{ value: UserRole; label: string; cls: string }> = [
-    { value: 'user',    label: 'Usuario',   cls: 'badge-navy' },
-    { value: 'admin',   label: 'Admin',     cls: 'badge-gold' },
-    { value: 'blocked', label: 'Bloqueado', cls: 'badge-red'  },
-  ]
-  const current = options.find(o => o.value === currentRole) ?? options[0]
-
-  return (
-    <div className="relative">
-      <button onClick={() => setOpen(!open)}
-        className={cn('badge cursor-pointer hover:opacity-80 transition-opacity flex items-center gap-1', current.cls)}
-      >
-        {current.label}
-        <ChevronDown size={10} className={cn('transition-transform', open && 'rotate-180')} />
-      </button>
-      {open && (
-        <div className="absolute left-0 top-full mt-1 w-32 bg-white rounded-xl border border-slate-200 shadow-card-hover z-20 overflow-hidden animate-slide-down">
-          {options.map(o => (
-            <button key={o.value} onClick={() => { onChange(o.value); setOpen(false) }}
-              className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium hover:bg-slate-50 transition-colors"
-            >
-              <span className={cn('badge', o.cls)}>{o.label}</span>
-              {currentRole === o.value && <span className="ml-auto text-navy-400">✓</span>}
-            </button>
-          ))}
-        </div>
-      )}
     </div>
   )
 }
