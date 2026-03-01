@@ -3,9 +3,8 @@ import type { Norma, NormaRaw, LeyesFilters, PaginatedResult, TipoNorma, EstadoN
 const SODA_BASE = 'https://www.datos.gov.co/resource'
 
 // Dataset principal de SUIN en datos.gov.co
-// Contiene leyes, decretos, resoluciones desde la Presidencia de Colombia
+// Campos reales: tipo, n_mero, a_o, vigencia, entidad, materia, art_culos, sector, subtipo
 const DATASET_NORMAS = 'fiev-nid6'
-const DATASET_NORMATIVA = '88h2-dykw' // Dataset alternativo/complementario
 
 const APP_TOKEN = process.env.SODA_APP_TOKEN
 
@@ -31,27 +30,132 @@ function normalizeTipo(raw?: string): TipoNorma {
 function normalizeEstado(raw?: string): EstadoNorma {
   if (!raw) return 'DESCONOCIDO'
   const upper = raw.toUpperCase()
-  if (upper.includes('VIGENTE')) return 'VIGENTE'
-  if (upper.includes('DEROGAD')) return 'DEROGADO'
+  if (upper.includes('VIGENTE') && !upper.includes('NO VIGENTE')) return 'VIGENTE'
+  if (upper.includes('NO VIGENTE') || upper.includes('DEROGAD')) return 'DEROGADO'
   if (upper.includes('MODIFICAD')) return 'MODIFICADO'
   return 'DESCONOCIDO'
 }
 
+// Limpia valores "NULL" que la API envía como string
+function cleanNull(val?: string): string | undefined {
+  if (!val || val.trim().toUpperCase() === 'NULL') return undefined
+  return val.trim()
+}
+
+// Elimina acentos/diacríticos de un string (á→a, é→e, ñ→n, etc.)
+function removeAccents(str: string): string {
+  return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+}
+
+// Genera un título descriptivo a partir de los campos disponibles
+function buildTitulo(raw: NormaRaw): string {
+  const tipo = cleanNull(raw.tipo) ?? 'Norma'
+  const numero = cleanNull(raw.n_mero) ?? ''
+  const anio = cleanNull(raw.a_o) ?? ''
+  const materiaRaw = cleanNull(raw.materia)
+  const materia = materiaRaw ? ` — ${materiaRaw.replace(/\|/g, ', ')}` : ''
+
+  if (numero && anio) return `${tipo} ${numero} de ${anio}${materia}`
+  if (numero) return `${tipo} ${numero}${materia}`
+  return `${tipo}${materia}`
+}
+
 function mapNorma(raw: NormaRaw, index: number): Norma {
+  const numero = cleanNull(raw.n_mero)
+  const anio = cleanNull(raw.a_o)
+  const tipo = cleanNull(raw.tipo)
+  const entidad = cleanNull(raw.entidad)
+  const materia = cleanNull(raw.materia)
+  const vigencia = cleanNull(raw.vigencia)
+
   return {
-    id: raw.numero_norma
-      ? `${raw.tipo_norma ?? 'N'}-${raw.numero_norma}-${raw.anio ?? '0'}`
+    id: numero
+      ? `${(tipo ?? 'N').replace(/\s+/g, '_')}-${numero}-${anio ?? '0'}`
       : `norma-${index}`,
-    numero: raw.numero_norma ?? 'Sin número',
-    anio: raw.anio ?? raw.fecha_norma?.split('-')[0] ?? 'N/D',
-    tipo: normalizeTipo(raw.tipo_norma),
-    entidad: raw.entidad ?? 'Entidad no especificada',
-    titulo: raw.titulo_norma ?? 'Sin título',
-    fecha: raw.fecha_norma ?? '',
-    estado: normalizeEstado(raw.estado),
-    linkOficial: raw.link_norma,
-    materia: raw.materia,
+    numero: numero ?? 'Sin número',
+    anio: anio ?? 'N/D',
+    tipo: normalizeTipo(tipo),
+    entidad: entidad ?? 'Entidad no especificada',
+    titulo: buildTitulo(raw),
+    fecha: '',  // El dataset fiev-nid6 no incluye fecha exacta
+    estado: normalizeEstado(vigencia),
+    linkOficial: undefined,  // El dataset fiev-nid6 no incluye URL
+    materia: materia?.replace(/\|/g, ', '),
   }
+}
+
+// ── Buscar URL del documento PDF en el dataset 88h2-dykw ──────────────────────
+
+const DATASET_DOCS = '88h2-dykw'
+
+export async function getNormaDocumentUrl(tipo: string, numero: string, anio?: string): Promise<{ url?: string; titulo?: string; descripcion?: string } | null> {
+  // Normalizar tipo para la búsqueda
+  const tipoNorm = removeAccents(tipo).toUpperCase()
+  const tipoQuery = encodeURIComponent(tipoNorm)
+  const numQuery = encodeURIComponent(numero)
+
+  // Usar " NUMERO " con espacios para evitar matches parciales (150 → 1500)
+  // El título tiene formato "LEY 150 DEL ..." o "DECRETO 150 DE ..."
+  const preciseNumQuery = encodeURIComponent(` ${numero} `)
+
+  // Buscar por tipo + número exacto en título
+  const url = `${SODA_BASE}/${DATASET_DOCS}.json?$where=upper(tipo) like '%25${tipoQuery}%25' AND upper(titulo) like '%25${preciseNumQuery}%25'&$limit=10`
+
+  try {
+    const res = await fetch(url, { headers: buildHeaders(), next: { revalidate: 3600 } })
+    if (!res.ok) return null
+    const data = await res.json()
+
+    // Filtrar client-side para verificar match exacto del número
+    const filtered = findBestMatch(data, numero, anio)
+    if (filtered) return filtered
+
+    // Fallback: buscar sin tipo, solo por número exacto
+    const fallbackUrl = `${SODA_BASE}/${DATASET_DOCS}.json?$where=upper(titulo) like '%25${preciseNumQuery}%25'&$limit=10`
+    const fallbackRes = await fetch(fallbackUrl, { headers: buildHeaders(), next: { revalidate: 3600 } })
+    if (!fallbackRes.ok) return null
+    const fallbackData = await fallbackRes.json()
+
+    const fallbackFiltered = findBestMatch(fallbackData, numero, anio)
+    if (fallbackFiltered) return fallbackFiltered
+
+    return null
+  } catch {
+    return null
+  }
+}
+
+// Verifica que el número aparezca como palabra exacta en el título (no como parte de otro número)
+function findBestMatch(
+  data: Array<{ url?: string; titulo?: string; descripcion?: string }>,
+  numero: string,
+  anio?: string
+): { url?: string; titulo?: string; descripcion?: string } | null {
+  if (!data || !data.length) return null
+
+  // Regex para match exacto del número como palabra completa
+  // Matchea "150" pero no "1500" ni "2150"
+  const numRegex = new RegExp(`\\b${numero}\\b`)
+
+  for (const item of data) {
+    const titulo = (item.titulo ?? '').toUpperCase()
+    if (numRegex.test(titulo)) {
+      // Si tenemos año, priorizar match que también contenga el año
+      if (anio && titulo.includes(anio)) {
+        return { url: item.url, titulo: item.titulo, descripcion: item.descripcion }
+      }
+    }
+  }
+
+  // Si no hubo match con año, devolver el primero que matchee por número
+  for (const item of data) {
+    const titulo = (item.titulo ?? '').toUpperCase()
+    if (numRegex.test(titulo)) {
+      return { url: item.url, titulo: item.titulo, descripcion: item.descripcion }
+    }
+  }
+
+  return null
 }
 
 // ── Listar leyes con filtros y paginación ─────────────────────────────────────
@@ -63,27 +167,43 @@ export async function getLeyes(filters: LeyesFilters = {}): Promise<PaginatedRes
   const whereClauses: string[] = []
 
   if (query && query.trim()) {
-    // Búsqueda en título
-    const q = query.trim().replace(/'/g, "''")
-    whereClauses.push(`upper(titulo_norma) like upper('%25${encodeURIComponent(q)}%25')`)
+    const raw = query.trim().replace(/'/g, "''")
+    // Normalizar: quitar acentos para que "resolución" encuentre "RESOLUCION"
+    const q = removeAccents(raw)
+    const encoded = encodeURIComponent(q)
+    // Si es un número puro, buscar por número de norma
+    if (/^\d+$/.test(q)) {
+      whereClauses.push(`n_mero='${q}'`)
+    } else {
+      // Búsqueda de texto en tipo + entidad + materia + número (sin tildes)
+      whereClauses.push(
+        `(upper(tipo) like upper('%25${encoded}%25') OR upper(entidad) like upper('%25${encoded}%25') OR upper(materia) like upper('%25${encoded}%25') OR n_mero='${encoded}')`
+      )
+    }
   }
 
   if (tipo) {
-    whereClauses.push(`upper(tipo_norma) like upper('%25${tipo}%25')`)
+    whereClauses.push(`upper(tipo) like upper('%25${tipo}%25')`)
   }
 
   if (anio) {
-    whereClauses.push(`anio='${anio}'`)
+    whereClauses.push(`a_o='${anio}'`)
   }
 
   if (estado && estado !== 'DESCONOCIDO') {
-    whereClauses.push(`upper(estado) like upper('%25${estado}%25')`)
+    const vigenciaMap: Record<string, string> = {
+      VIGENTE: 'Vigente',
+      DEROGADO: 'No vigente',
+      MODIFICADO: 'Modificado',
+    }
+    const vigenciaValue = vigenciaMap[estado] ?? estado
+    whereClauses.push(`upper(vigencia) like upper('%25${encodeURIComponent(vigenciaValue)}%25')`)
   }
 
   const whereStr = whereClauses.length > 0 ? `&$where=${whereClauses.join(' AND ')}` : ''
 
   const countUrl = `${SODA_BASE}/${DATASET_NORMAS}.json?$select=count(*)${whereStr}`
-  const dataUrl = `${SODA_BASE}/${DATASET_NORMAS}.json?$limit=${pageSize}&$offset=${offset}&$order=anio DESC${whereStr}`
+  const dataUrl = `${SODA_BASE}/${DATASET_NORMAS}.json?$limit=${pageSize}&$offset=${offset}&$order=a_o DESC${whereStr}`
 
   try {
     const [countRes, dataRes] = await Promise.all([
@@ -101,8 +221,8 @@ export async function getLeyes(filters: LeyesFilters = {}): Promise<PaginatedRes
 
     return { data, total, page, pageSize, hasMore: offset + pageSize < total }
   } catch (error) {
-    console.error('[getLeyes] Error:', error)
-    // Retorna mock data si la API falla (útil en desarrollo)
+    console.error('[getLeyes] Error fetching from SODA API:', error)
+    console.warn('[getLeyes] ⚠️ Usando datos mock como fallback. Verifica la conexión a la API.')
     return getMockLeyes(filters)
   }
 }
@@ -110,15 +230,21 @@ export async function getLeyes(filters: LeyesFilters = {}): Promise<PaginatedRes
 // ── Obtener una ley por ID ────────────────────────────────────────────────────
 
 export async function getLeyById(id: string): Promise<Norma | null> {
-  // El id tiene formato "TIPO-NUMERO-AÑO"
+  // IDs con formato "norma-X" no tienen datos reales para buscar
+  if (id.startsWith('norma-')) return null
+
+  // El id tiene formato "TIPO-NUMERO-AÑO" (ej: "LEY-100-1993", "ACTO_LEGISLATIVO-3-2011")
   const parts = id.split('-')
   if (parts.length < 3) return null
 
-  const tipo = parts[0]
-  const numero = parts[1]
-  const anio = parts[2]
+  // El tipo puede contener guiones (ej: "ACTO_LEGISLATIVO"), tomamos los últimos dos segmentos
+  const anio = parts[parts.length - 1]
+  const numero = parts[parts.length - 2]
 
-  const url = `${SODA_BASE}/${DATASET_NORMAS}.json?$where=numero_norma='${numero}' AND anio='${anio}'&$limit=1`
+  // Validar que tenemos datos suficientes: año debe ser numérico de 4 dígitos
+  if (!anio || !/^\d{3,4}$/.test(anio) || !numero) return null
+
+  const url = `${SODA_BASE}/${DATASET_NORMAS}.json?$where=n_mero='${numero}' AND a_o='${anio}'&$limit=5`
 
   try {
     const res = await fetch(url, { headers: buildHeaders(), next: { revalidate: 3600 } })
@@ -131,22 +257,13 @@ export async function getLeyById(id: string): Promise<Norma | null> {
   }
 }
 
-// ── Mock data para desarrollo sin conexión ────────────────────────────────────
+// ── Mock data para desarrollo sin conexión (fallback) ─────────────────────────
 
 function getMockLeyes(filters: LeyesFilters): PaginatedResult<Norma> {
   const mockData: Norma[] = [
-    { id: 'LEY-100-1993', numero: '100', anio: '1993', tipo: 'LEY', entidad: 'Congreso de la República', titulo: 'Por la cual se crea el sistema de seguridad social integral', fecha: '1993-12-23', estado: 'VIGENTE', materia: 'Seguridad Social' },
-    { id: 'LEY-599-2000', numero: '599', anio: '2000', tipo: 'LEY', entidad: 'Congreso de la República', titulo: 'Por la cual se expide el Código Penal', fecha: '2000-07-24', estado: 'VIGENTE', materia: 'Derecho Penal' },
-    { id: 'LEY-906-2004', numero: '906', anio: '2004', tipo: 'LEY', entidad: 'Congreso de la República', titulo: 'Por la cual se expide el Código de Procedimiento Penal', fecha: '2004-08-31', estado: 'VIGENTE', materia: 'Procedimiento Penal' },
-    { id: 'LEY-1564-2012', numero: '1564', anio: '2012', tipo: 'LEY', entidad: 'Congreso de la República', titulo: 'Por medio de la cual se expide el Código General del Proceso', fecha: '2012-07-12', estado: 'VIGENTE', materia: 'Derecho Civil Procesal' },
-    { id: 'DECRETO-410-1971', numero: '410', anio: '1971', tipo: 'DECRETO', entidad: 'Presidencia de la República', titulo: 'Por el cual se expide el Código de Comercio', fecha: '1971-03-27', estado: 'VIGENTE', materia: 'Derecho Comercial' },
-    { id: 'LEY-1437-2011', numero: '1437', anio: '2011', tipo: 'LEY', entidad: 'Congreso de la República', titulo: 'Por la cual se expide el Código de Procedimiento Administrativo y de lo Contencioso Administrativo', fecha: '2011-01-18', estado: 'VIGENTE', materia: 'Derecho Administrativo' },
-    { id: 'LEY-57-1887', numero: '57', anio: '1887', tipo: 'LEY', entidad: 'Congreso de la República', titulo: 'Código Civil Colombiano', fecha: '1887-04-26', estado: 'VIGENTE', materia: 'Derecho Civil' },
-    { id: 'LEY-1952-2019', numero: '1952', anio: '2019', tipo: 'LEY', entidad: 'Congreso de la República', titulo: 'Por medio de la cual se expide el Código General Disciplinario', fecha: '2019-01-28', estado: 'VIGENTE', materia: 'Derecho Disciplinario' },
-    { id: 'DECRETO-2663-1950', numero: '2663', anio: '1950', tipo: 'DECRETO', entidad: 'Presidencia de la República', titulo: 'Código Sustantivo del Trabajo', fecha: '1950-08-05', estado: 'VIGENTE', materia: 'Derecho Laboral' },
-    { id: 'LEY-1098-2006', numero: '1098', anio: '2006', tipo: 'LEY', entidad: 'Congreso de la República', titulo: 'Por la cual se expide el Código de la Infancia y la Adolescencia', fecha: '2006-11-08', estado: 'VIGENTE', materia: 'Familia y Menores' },
-    { id: 'LEY-80-1993', numero: '80', anio: '1993', tipo: 'LEY', entidad: 'Congreso de la República', titulo: 'Por la cual se expide el Estatuto General de Contratación de la Administración Pública', fecha: '1993-10-28', estado: 'VIGENTE', materia: 'Contratación Pública' },
-    { id: 'LEY-1258-2008', numero: '1258', anio: '2008', tipo: 'LEY', entidad: 'Congreso de la República', titulo: 'Por medio de la cual se crea la sociedad por acciones simplificada', fecha: '2008-12-05', estado: 'VIGENTE', materia: 'Derecho Comercial' },
+    { id: 'LEY-100-1993', numero: '100', anio: '1993', tipo: 'LEY', entidad: 'Congreso de la República', titulo: 'LEY 100 de 1993 — Seguridad Social', fecha: '', estado: 'VIGENTE', materia: 'Seguridad Social' },
+    { id: 'LEY-599-2000', numero: '599', anio: '2000', tipo: 'LEY', entidad: 'Congreso de la República', titulo: 'LEY 599 de 2000 — Derecho Penal', fecha: '', estado: 'VIGENTE', materia: 'Derecho Penal' },
+    { id: 'LEY-906-2004', numero: '906', anio: '2004', tipo: 'LEY', entidad: 'Congreso de la República', titulo: 'LEY 906 de 2004 — Procedimiento Penal', fecha: '', estado: 'VIGENTE', materia: 'Procedimiento Penal' },
   ]
 
   const filtered = mockData.filter(n => {

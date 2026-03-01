@@ -12,6 +12,7 @@ interface Props {
 
 export default function LeyesClientPagination({ page, total, pageSize, searchParams }: Props) {
   const router = useRouter()
+  const totalPages = Math.max(1, Math.ceil(total / pageSize))
 
   const handlePageChange = (newPage: number) => {
     const params = new URLSearchParams()
@@ -26,9 +27,8 @@ export default function LeyesClientPagination({ page, total, pageSize, searchPar
 
   return (
     <Pagination
-      page={page}
-      total={total}
-      pageSize={pageSize}
+      currentPage={page}
+      totalPages={totalPages}
       onPageChange={handlePageChange}
     />
   )
