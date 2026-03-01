@@ -102,3 +102,41 @@ export type NoteInsert = Database['public']['Tables']['notes']['Insert']
 export type NoteUpdate = Database['public']['Tables']['notes']['Update']
 export type UserRole = 'admin' | 'user' | 'blocked'
 export type NoteColor = 'default' | 'amber' | 'red' | 'blue' | 'green' | 'purple'
+
+// ── Recordatorios (feature calendario) ───────────────────────────────────────
+export type ReminderColor = 'blue' | 'red' | 'green' | 'amber' | 'purple' | 'navy'
+
+export interface Reminder {
+  id: string
+  user_id: string
+  title: string
+  description: string | null
+  date: string          // 'YYYY-MM-DD'
+  time: string | null   // 'HH:MM'
+  color: ReminderColor
+  note_id: string | null
+  is_completed: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface ReminderInsert {
+  user_id: string
+  title: string
+  description?: string | null
+  date: string
+  time?: string | null
+  color?: ReminderColor
+  note_id?: string | null
+  is_completed?: boolean
+}
+
+export interface ReminderUpdate {
+  title?: string
+  description?: string | null
+  date?: string
+  time?: string | null
+  color?: ReminderColor
+  note_id?: string | null
+  is_completed?: boolean
+}

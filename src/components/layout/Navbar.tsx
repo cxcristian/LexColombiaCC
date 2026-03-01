@@ -74,6 +74,15 @@ export function Navbar() {
                 Mis notas
               </Link>
             )}
+            {user && (
+              <Link href="/calendario"
+                className={cn('px-4 py-2 rounded-lg text-sm font-medium transition-all',
+                  pathname.startsWith('/calendario') ? 'bg-navy-50 text-navy-900 font-semibold' : 'text-slate-600 hover:text-navy-900 hover:bg-slate-50'
+                )}
+              >
+                Calendario
+              </Link>
+            )}
           </nav>
 
           {/* Right side */}
