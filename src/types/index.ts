@@ -1,16 +1,16 @@
 // ── Leyes (SODA API - datos.gov.co) ──────────────────────────────────────────
 
 export interface NormaRaw {
-  // Campos del dataset SUIN en datos.gov.co
-  numero_norma?: string
-  anio?: string
-  tipo_norma?: string
-  entidad?: string
-  titulo_norma?: string
-  fecha_norma?: string
-  estado?: string
-  link_norma?: string
-  materia?: string
+  // Campos reales del dataset SUIN (fiev-nid6) en datos.gov.co
+  tipo?: string         // ej: "LEY", "DECRETO", "ACTO LEGISLATIVO"
+  n_mero?: string       // número de la norma
+  a_o?: string          // año de expedición
+  vigencia?: string     // ej: "Vigente", "No vigente"
+  entidad?: string      // ej: "CONGRESO DE LA REPUBLICA"
+  materia?: string      // ej: "Derecho Penal|Procedimiento Penal"
+  art_culos?: string    // cantidad de artículos
+  sector?: string       // ej: "Interior", "Hacienda"
+  subtipo?: string
   [key: string]: string | undefined
 }
 
