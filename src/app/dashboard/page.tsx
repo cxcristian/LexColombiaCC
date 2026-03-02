@@ -14,6 +14,7 @@ import {
   Calendar,
   Loader2,
   Shield,
+  Bell,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { supabaseClient } from "@/lib/supabase/client";
@@ -166,6 +167,21 @@ export default function DashboardPage() {
           </div>
         ))}
       </div>
+
+      {/* Calendar quick access */}
+      <Link
+        href="/calendario"
+        className="lex-card flex items-center gap-4 px-6 py-4 mb-8 hover:border-navy-200 transition-all group"
+      >
+        <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 bg-navy-50 border border-navy-100 group-hover:bg-navy-100 transition-colors">
+          <Calendar size={18} className="text-navy-700" />
+        </div>
+        <div className="flex-1">
+          <p className="text-sm font-semibold text-navy-900">Mi calendario</p>
+          <p className="text-xs text-slate-500">Gestiona recordatorios y fechas importantes</p>
+        </div>
+        <Bell size={15} className="text-slate-300 group-hover:text-navy-400 transition-colors" />
+      </Link>
 
       {/* Recent notes */}
       <div className="lex-card overflow-hidden">
