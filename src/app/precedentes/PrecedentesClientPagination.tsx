@@ -24,11 +24,12 @@ export default function PrecedentesClientPagination({ page, total, pageSize, sea
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
+  const totalPages = Math.max(1, Math.ceil(total / pageSize))
+
   return (
     <Pagination
-      page={page}
-      total={total}
-      pageSize={pageSize}
+      currentPage={page}
+      totalPages={totalPages}
       onPageChange={handlePageChange}
     />
   )

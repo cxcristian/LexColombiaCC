@@ -1,5 +1,6 @@
 import Link from 'next/link'
-import { BookOpen, ArrowRight, Shield, Clock, FileText, Gavel, Scale, ChevronRight } from 'lucide-react'
+import { BookOpen, ArrowRight, Shield, Clock, FileText, Gavel, Scale, ChevronRight, Info } from 'lucide-react'
+import { AnimatedStats } from '@/components/ui/AnimatedStats'
 
 export default function HomePage() {
   return (
@@ -36,10 +37,10 @@ export default function HomePage() {
                   Explorar Biblioteca
                   <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
                 </Link>
-                <Link href="/precedentes"
+                <Link href="/acerca"
                   className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-semibold text-sm border border-white/20 text-white hover:bg-white/10 transition-all"
                 >
-                  <Scale size={16} />
+                  <Info size={16} />
                   Acerca de BiblioLex
                 </Link>
               </div>
@@ -64,10 +65,10 @@ export default function HomePage() {
                 </div>
                 {/* Floating pills */}
                 {[
-                  { label: '1.200+ leyes', top: '8%',  left: '-10%' },
+                  { label: '80.000+ docs', top: '8%', left: '-10%' },
                   { label: 'Constitución', top: '75%', left: '-15%' },
                   { label: 'Jurisprudencia', top: '15%', right: '-15%' },
-                  { label: 'Acceso libre', top: '70%',  right: '-10%' },
+                  { label: 'Acceso libre', top: '70%', right: '-10%' },
                 ].map(({ label, ...pos }) => (
                   <div key={label}
                     className="absolute px-3 py-1.5 rounded-full text-xs font-semibold border"
@@ -83,23 +84,7 @@ export default function HomePage() {
       </section>
 
       {/* ── Stats ── */}
-      <section className="border-b border-slate-200 bg-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-8 text-center">
-            {[
-              { value: '1.200+', label: 'Documentos' },
-              { value: '100%', label: 'Gratuito' },
-              { value: '24/7', label: 'Disponible' },
-              { value: 'Oficial', label: 'Fuentes' },
-            ].map(({ value, label }) => (
-              <div key={label}>
-                <div className="font-display font-bold text-3xl sm:text-4xl text-navy-900 mb-1">{value}</div>
-                <div className="text-sm text-slate-500">{label}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+      <AnimatedStats />
 
       {/* ── Categories ── */}
       <section className="py-16 px-4 sm:px-6 bg-slate-50">
