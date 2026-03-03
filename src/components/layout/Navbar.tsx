@@ -12,11 +12,12 @@ import { AuthModal } from '@/components/auth/AuthModal'
 const navLinks = [
   { href: '/', label: 'Inicio', exact: true },
   { href: '/leyes', label: 'Biblioteca', icon: BookOpen },
+  { href: '/precedentes', label: 'Precedentes', icon: Gavel },
 ]
 
 export function Navbar() {
   const pathname = usePathname()
-  const [menuOpen, setMenuOpen]       = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [showAuthModal, setShowAuthModal] = useState(false)
   const { user, profile, loading, signOut } = useAuth()
@@ -100,7 +101,7 @@ export function Navbar() {
               className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-slate-500 hover:text-navy-800 hover:bg-slate-50 transition-all border border-slate-200"
             >
               <Search size={14} />
-              <span className="hidden lg:inline text-xs">Buscar documentos</span>
+              <span className="hidden lg:inline text-xs">Buscar</span>
             </Link>
 
             {loading ? (

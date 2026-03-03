@@ -112,8 +112,8 @@ export default async function PrecedentesPage({ searchParams }: PageProps) {
       >
         <Info size={16} className="flex-shrink-0 mt-0.5" style={{ color: 'var(--color-seal)' }} />
         <p>
-          Los precedentes son sentencias seleccionadas por su relevancia jurídica. Los resúmenes son editoriales y
-          no reemplazan la lectura del texto completo. Para consulta oficial, usa el enlace al texto original.
+          Sentencias obtenidas de la base de datos oficial de datos.gov.co (Corte Constitucional).
+          Para consulta oficial, usa el enlace al texto original en la relatoría de la Corte.
         </p>
       </div>
     </div>
