@@ -51,7 +51,7 @@ export default function AdminUsuariosPage() {
     if (u.id === currentUser?.id) return
     setSelectedUser(u)
     setPendingRole(u.role)
-  }
+  } 
 
   const closePanel = () => {
     setSelectedUser(null)

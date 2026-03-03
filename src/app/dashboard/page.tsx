@@ -15,16 +15,22 @@ import {
   Loader2,
   Shield,
   Bell,
+  Briefcase,
+  AlertTriangle,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { supabaseClient } from "@/lib/supabase/client";
 import type { Note } from "@/types/database";
+import { getCasesStats, getProximosVencimientos } from "@/lib/cases";
+import { getDiasRestantes, getUrgenciaColor } from "@/types/cases";
 
 export default function DashboardPage() {
   const { user, profile, loading: authLoading } = useAuth();
   const router = useRouter();
   const [notes, setNotes] = useState<Note[]>([]);
   const [loading, setLoading] = useState(true);
+  const [casesStats, setCasesStats] = useState({ total: 0, activos: 0, suspendidos: 0, cerrados: 0 });
+  const [vencimientos, setVencimientos] = useState<Awaited<ReturnType<typeof getProximosVencimientos>>>([]);
 
   useEffect(() => {
     if (!authLoading && !user) router.push("/");
@@ -32,15 +38,16 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!user) return;
-    supabaseClient
-      .from("notes")
-      .select("*")
-      .eq("user_id", user.id)
-      .order("updated_at", { ascending: false })
-      .then(({ data }) => {
-        setNotes(data ?? []);
-        setLoading(false);
-      });
+    Promise.all([
+      supabaseClient.from("notes").select("*").eq("user_id", user.id).order("updated_at", { ascending: false }),
+      getCasesStats(user.id),
+      getProximosVencimientos(user.id, 3),
+    ]).then(([{ data }, stats, venc]) => {
+      setNotes(data ?? []);
+      setCasesStats(stats);
+      setVencimientos(venc);
+      setLoading(false);
+    });
   }, [user]);
 
   if (authLoading || loading)
@@ -167,6 +174,53 @@ export default function DashboardPage() {
           </div>
         ))}
       </div>
+
+      {/* Casos stats */}
+      {casesStats.total > 0 && (
+        <div className="lex-card overflow-hidden mb-8">
+          <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+            <div className="flex items-center gap-2">
+              <Briefcase size={15} className="text-navy-700" />
+              <h2 className="font-display font-bold text-base text-navy-900">Mis casos</h2>
+            </div>
+            <Link href="/casos" className="text-xs font-medium text-navy-700 hover:text-navy-900">Ver todos →</Link>
+          </div>
+          <div className="grid grid-cols-3 divide-x divide-slate-100">
+            {[
+              { label: "Activos",     value: casesStats.activos,     color: "#16a34a" },
+              { label: "Suspendidos", value: casesStats.suspendidos, color: "#d97706" },
+              { label: "Cerrados",    value: casesStats.cerrados,    color: "#475569" },
+            ].map(s => (
+              <div key={s.label} className="p-4 text-center">
+                <div className="font-display font-black text-xl" style={{ color: s.color }}>{s.value}</div>
+                <div className="text-xs text-slate-500">{s.label}</div>
+              </div>
+            ))}
+          </div>
+          {vencimientos.length > 0 && (
+            <div className="border-t border-slate-100 px-5 py-3 bg-red-50">
+              <div className="flex items-center gap-1.5 mb-1.5">
+                <AlertTriangle size={12} className="text-red-600" />
+                <span className="text-xs font-semibold text-red-700">Términos próximos</span>
+              </div>
+              <div className="flex gap-2 flex-wrap">
+                {vencimientos.map(v => {
+                  const dias = getDiasRestantes(v.fecha_limite!);
+                  const urg  = getUrgenciaColor(dias);
+                  return (
+                    <Link key={v.id} href={`/casos`}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold"
+                      style={{ background: urg.bg, color: urg.color }}
+                    >
+                      {v.titulo} · {dias === 0 ? "hoy" : `${dias}d`}
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Calendar quick access */}
       <Link
