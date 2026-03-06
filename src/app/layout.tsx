@@ -3,6 +3,8 @@ import './globals.css'
 import { Navbar } from '@/components/layout/Navbar'
 import { Footer } from '@/components/layout/Footer'
 import { AuthProvider } from '@/context/AuthContext'
+import { PlanProvider } from '@/context/PlanContext'
+import { TrialBanner } from '@/components/plans/PlanComponents'
 
 export const metadata: Metadata = {
   title: {
@@ -18,9 +20,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="es-CO">
       <body className="min-h-screen flex flex-col">
         <AuthProvider>
-          <Navbar />
-          <main className="flex-1">{children}</main>
-          <Footer />
+          <PlanProvider>
+            <TrialBanner />
+            <Navbar />
+            <main className="flex-1">{children}</main>
+            <Footer />
+          </PlanProvider>
         </AuthProvider>
       </body>
     </html>
