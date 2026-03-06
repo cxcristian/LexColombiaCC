@@ -41,7 +41,8 @@ export default function AdminUsuariosPage() {
       ])
       const countMap: Record<string, number> = {}
       notesCounts?.forEach((n: { user_id: string }) => { countMap[n.user_id] = (countMap[n.user_id] ?? 0) + 1 })
-      setUsers((profiles ?? []).map(p => ({ ...p, notes_count: countMap[p.id] ?? 0 })))
+      const profilesList = (profiles ?? []) as Profile[]
+      setUsers(profilesList.map(p => ({ ...p, notes_count: countMap[p.id] ?? 0 })))
       setLoading(false)
     }
     load()

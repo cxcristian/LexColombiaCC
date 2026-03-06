@@ -31,7 +31,7 @@ export default function AdminPage() {
         supabaseClient.from('profiles').select('*', { count: 'exact', head: true }).gte('created_at', startMonth.toISOString()),
         supabaseClient.from('notes').select('*', { count: 'exact', head: true }).gte('created_at', startMonth.toISOString()),
       ])
-      const p = profiles ?? []
+      const p = (profiles ?? []) as Profile[]
       setStats({
         totalUsers: p.length,
         totalAdmins: p.filter(u => u.role === 'admin').length,
